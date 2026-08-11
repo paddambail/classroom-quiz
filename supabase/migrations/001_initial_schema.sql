@@ -35,8 +35,7 @@ create table if not exists public.students (
   name text not null check (length(trim(name)) between 1 and 40),
   score integer not null default 0 check (score >= 0),
   total_response_time numeric not null default 0 check (total_response_time >= 0),
-  joined_at timestamptz not null default now(),
-  unique (quiz_id, lower(name))
+  joined_at timestamptz not null default now()
 );
 
 create table if not exists public.answers (
@@ -62,6 +61,7 @@ create table if not exists public.host_sessions (
 create index if not exists quizzes_pin_idx on public.quizzes(game_pin);
 create index if not exists questions_quiz_order_idx on public.questions(quiz_id, question_order);
 create index if not exists students_quiz_score_idx on public.students(quiz_id, score desc, total_response_time asc);
+create unique index if not exists students_quiz_name_idx on public.students(quiz_id, lower(name));
 create index if not exists answers_quiz_question_idx on public.answers(quiz_id, question_id);
 
 create or replace function public.set_updated_at()
@@ -85,11 +85,9 @@ alter table public.host_sessions enable row level security;
 drop policy if exists "public can read quiz state" on public.quizzes;
 create policy "public can read quiz state" on public.quizzes for select using (true);
 
--- Question answers are never exposed through the browser. Server API routes use the service role.
 drop policy if exists "no public question access" on public.questions;
 create policy "no public question access" on public.questions for select using (false);
 
--- Names/scores are safe for the live leaderboard; writes happen only through server APIs.
 drop policy if exists "public can read students" on public.students;
 create policy "public can read students" on public.students for select using (true);
 
@@ -102,7 +100,6 @@ create policy "no public host session access" on public.host_sessions for select
 alter table public.quizzes replica identity full;
 alter table public.students replica identity full;
 
--- Add the live tables to Supabase Realtime only when they are not already present.
 do $$
 begin
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'quizzes') then
